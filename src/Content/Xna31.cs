@@ -76,6 +76,38 @@ namespace Microsoft.Xna.Framework.Content
 			set;
 		}
 
+		/// <summary>
+		/// Replaces the content reader FNA would otherwise use for <paramref name="readerTypeString"/>
+		/// with one the host supplies. The name must be spelled exactly as the XNB spells it (for the
+		/// builtins that is the bare type name, e.g.
+		/// <c>Microsoft.Xna.Framework.Content.ModelReader</c>).
+		/// </summary>
+		/// <remarks>
+		/// <para>This exists for a host that reimplements XNA 3.1's OWN object model rather than
+		/// using FNA's. Such a host's <c>Model</c>, <c>VertexDeclaration</c> and buffer types are
+		/// its own types, so a reader that produces FNA's cannot serve it — the cast on the way out
+		/// of <c>ReadObject&lt;T&gt;</c> would throw <c>InvalidCastException</c> naming two
+		/// identically-spelled types from different assemblies.</para>
+		/// <para>Overrides win over <see cref="Type.GetType"/> and over
+		/// <see cref="ReaderTypeResolver"/>, and the first registration for a name wins (matching
+		/// the type-creator table this delegates to). Registering one does not change any payload
+		/// FNA reads for itself; it changes only which reader instance is handed the stream.</para>
+		/// </remarks>
+		public static void AddReaderOverride(
+			string readerTypeString,
+			Func<ContentTypeReader> createReader
+		) {
+			if (string.IsNullOrEmpty(readerTypeString))
+			{
+				throw new ArgumentNullException("readerTypeString");
+			}
+			if (createReader == null)
+			{
+				throw new ArgumentNullException("createReader");
+			}
+			ContentTypeReaderManager.AddTypeCreator(readerTypeString, createReader);
+		}
+
 		#endregion
 
 		#region Reader Type Name Normalisation
