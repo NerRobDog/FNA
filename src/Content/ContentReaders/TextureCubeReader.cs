@@ -23,7 +23,9 @@ namespace Microsoft.Xna.Framework.Content
 		) {
 			TextureCube textureCube;
 
-			SurfaceFormat surfaceFormat = (SurfaceFormat) reader.ReadInt32();
+			SurfaceFormat surfaceFormat = reader.version < 5 ?
+				Xna31.TranslateSurfaceFormat(reader.ReadInt32()) :
+				(SurfaceFormat) reader.ReadInt32();
 			int size = reader.ReadInt32();
 			int levels = reader.ReadInt32();
 

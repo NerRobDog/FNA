@@ -111,6 +111,7 @@
 		<Compile Include="src\Content\ContentSerializerTypeVersionAttribute.cs" />
 		<Compile Include="src\Content\ContentTypeReader.cs" />
 		<Compile Include="src\Content\ContentTypeReaderManager.cs" />
+		<Compile Include="src\Content\Xna31.cs" />
 		<Compile Include="src\Content\LzxDecoder.cs" />
 		<Compile Include="src\Content\ResourceContentManager.cs" />
 		<Compile Include="src\Curve.cs" />

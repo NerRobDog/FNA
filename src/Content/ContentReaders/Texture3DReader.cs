@@ -25,7 +25,9 @@ namespace Microsoft.Xna.Framework.Content
 		) {
 			Texture3D texture;
 
-			SurfaceFormat format = (SurfaceFormat) reader.ReadInt32();
+			SurfaceFormat format = reader.version < 5 ?
+				Xna31.TranslateSurfaceFormat(reader.ReadInt32()) :
+				(SurfaceFormat) reader.ReadInt32();
 			int width = reader.ReadInt32();
 			int height = reader.ReadInt32();
 			int depth = reader.ReadInt32();

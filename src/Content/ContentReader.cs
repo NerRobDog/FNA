@@ -58,6 +58,16 @@ namespace Microsoft.Xna.Framework.Content
 		internal int version;
 		internal char platform;
 
+		/* XNB v4 hand-off between ModelReader and VertexBufferReader. A 3.1 vertex buffer has no
+		 * vertex declaration in its payload — the model owns the declarations and its mesh parts
+		 * index them — so VertexBufferReader parks the raw bytes here and ModelReader builds the
+		 * FNA VertexBuffer once it knows which declaration applies. See either reader for the
+		 * layouts. Both fields are only ever touched on the thread doing the read, between one
+		 * ReadObject call and the ModelReader statement immediately after it.
+		 */
+		internal bool xna31ExpectsRawVertexBuffer;
+		internal byte[] xna31RawVertexBuffer;
+
 		#endregion
 
 		#region Private Variables

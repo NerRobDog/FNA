@@ -42,32 +42,11 @@ namespace Microsoft.Xna.Framework.Content
 			if (reader.version < 5)
 			{
 				/* These integer values are based on the enum values
-				 * from previous XNA versions.
+				 * from previous XNA versions. The full 3.1 table is
+				 * in Xna31.cs, read out of the 3.1 redistributable.
 				 * -flibit
 				 */
-				int legacyFormat = reader.ReadInt32();
-				if (legacyFormat == 1)
-				{
-					surfaceFormat = SurfaceFormat.ColorBgraEXT;
-				}
-				else if (legacyFormat == 28)
-				{
-					surfaceFormat = SurfaceFormat.Dxt1;
-				}
-				else if (legacyFormat == 30)
-				{
-					surfaceFormat = SurfaceFormat.Dxt3;
-				}
-				else if (legacyFormat == 32)
-				{
-					surfaceFormat = SurfaceFormat.Dxt5;
-				}
-				else
-				{
-					throw new NotSupportedException(
-						"Unsupported legacy surface format."
-					);
-				}
+				surfaceFormat = Xna31.TranslateSurfaceFormat(reader.ReadInt32());
 			}
 			else
 			{

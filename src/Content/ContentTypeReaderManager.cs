@@ -196,7 +196,20 @@ namespace Microsoft.Xna.Framework.Content
 						string readerTypeString = originalReaderTypeString;
 						readerTypeString = PrepareType(readerTypeString);
 
-						Type l_readerType = Type.GetType(readerTypeString);
+						Type l_readerType = Type.GetType(readerTypeString, false);
+						if (ReferenceEquals(l_readerType, null))
+						{
+							/* XNB v4 (XNA 3.1) names custom readers with a PARTIAL assembly name and
+							 * no public key token, and a host that loads those assemblies into its
+							 * own AssemblyLoadContext is invisible to Type.GetType regardless. Give
+							 * the host its say before declaring the reader missing.
+							 */
+							Func<string, Type> resolver = Xna31.ReaderTypeResolver;
+							if (resolver != null)
+							{
+								l_readerType = resolver(originalReaderTypeString);
+							}
+						}
 						if (!ReferenceEquals(l_readerType, null))
 						{
 							ContentTypeReader typeReader;
@@ -321,7 +334,12 @@ namespace Microsoft.Xna.Framework.Content
 		/// </returns>
 		private static string PrepareType(string type)
 		{
-			return regex.Replace(type, regexReplacement);
+			/* The regex covers the Microsoft.Xna.Framework references — including the ones inside
+			 * generic arguments, which is where XNB v4 puts them (its top-level builtin reader names
+			 * carry no assembly qualification at all, so they resolve out of THIS assembly on their
+			 * own). Xna31 covers the corlib references v4 also bakes in.
+			 */
+			return Xna31.NormalizeCorlibReferences(regex.Replace(type, regexReplacement));
 		}
 
 		#endregion
