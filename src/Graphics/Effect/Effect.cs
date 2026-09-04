@@ -714,6 +714,81 @@ namespace Microsoft.Xna.Framework.Graphics
 			return XNAAddress[index];
 		}
 
+		[System.Runtime.InteropServices.DllImport(
+			"FNA3D",
+			CallingConvention = System.Runtime.InteropServices.CallingConvention.Cdecl)]
+		private static extern int MOJOSHADER_sdlGetVertexAttribLocation(
+			IntPtr vert,
+			int usage,
+			int index
+		);
+
+		/// <summary>
+		/// Where one pass's VERTEX SHADER reads a given input semantic, or -1 if it does not read
+		/// it at all. <paramref name="usage"/> is a MOJOSHADER_usage, which is D3DDECLUSAGE, which
+		/// is also XNA 3.1's VertexElementUsage — all three are the same D3D9 numbering.
+		///
+		/// <para>
+		/// Added for the XNA 3.1 bridge, and it is the only exact answer available. A host that
+		/// has to feed a vertex-shader input the vertex declaration never described (D3D9 read
+		/// those as zero; Metal refuses the pipeline, and refuses just as hard if a vertex buffer
+		/// is bound that no attribute reads) must know what THIS pass's shader reads. Deriving it
+		/// from the FX bytecode does not work: the shader blobs do not appear in the file in the
+		/// order the passes reference them. MojoShader's object table carries the technique/pass
+		/// each shader belongs to, and MojoShader itself answers the semantic question.
+		/// </para>
+		/// <para>
+		/// Assumes the SDL_GPU shader backend, which is the only one FNA3D builds MojoShader
+		/// effects with on this port's platforms; the pointer handed to MojoShader is the very one
+		/// FNA3D stored for that pass.
+		/// </para>
+		/// </summary>
+		public unsafe int INTERNAL_GetVertexAttribLocation(
+			int technique,
+			int pass,
+			int usage,
+			int usageIndex
+		) {
+			if (effectData == IntPtr.Zero)
+			{
+				return -1;
+			}
+
+			MOJOSHADER_effect* effectPtr = (MOJOSHADER_effect*) effectData;
+			MOJOSHADER_effectObject* objects = (MOJOSHADER_effectObject*) effectPtr->objects;
+			for (int i = 0; i < effectPtr->object_count; i += 1)
+			{
+				if (objects[i].type != MOJOSHADER_symbolType.MOJOSHADER_SYMTYPE_VERTEXSHADER)
+				{
+					continue;
+				}
+
+				if (objects[i].shader.is_preshader != 0)
+				{
+					continue;
+				}
+
+				if (	objects[i].shader.technique != (uint) technique ||
+					objects[i].shader.pass != (uint) pass	)
+				{
+					continue;
+				}
+
+				if (objects[i].shader.shader == IntPtr.Zero)
+				{
+					return -1;
+				}
+
+				return MOJOSHADER_sdlGetVertexAttribLocation(
+					objects[i].shader.shader,
+					usage,
+					usageIndex
+				);
+			}
+
+			return -1;
+		}
+
 		private unsafe void INTERNAL_updateSamplers(
 			uint changeCount,
 			MOJOSHADER_samplerStateRegister* registers,
