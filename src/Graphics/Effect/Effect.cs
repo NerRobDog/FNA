@@ -178,10 +178,13 @@ namespace Microsoft.Xna.Framework.Graphics
 			// IndexOutOfRangeException for any 3.1 FX that sets one. Magicka's post-processing
 			// does. Demoted to the nearest survivor instead, which is a DIVERGENCE from 3.1 and
 			// is logged as one:
-			//   BORDER     -> Clamp. Differs only outside [0,1], where D3D9 returned the border
-			//                 colour (transparent black by default) and Clamp repeats the edge
-			//                 texel. Post-process passes sample inside the target, so on this
-			//                 path the two agree.
+			//   BORDER     -> Clamp. They agree strictly inside [0,1] and differ outside it,
+			//                 where D3D9 returned the border colour (transparent black by
+			//                 default) and Clamp repeats the edge texel instead. That is NOT
+			//                 unreachable in practice: a blur kernel steps outside the target at
+			//                 the frame edge, so a bloom/blur pass can pick up a one-to-two-texel
+			//                 halo along the border that the original would have faded to
+			//                 transparent. Visible-in-principle, accepted for now.
 			//   MIRRORONCE -> Mirror. Agrees on [-1,1] and repeats the mirror beyond it where
 			//                 D3D9 would have clamped.
 			TextureAddressMode.Clamp,	// MOJOSHADER_TADDRESS_BORDER
