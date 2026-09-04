@@ -81,6 +81,7 @@ namespace Microsoft.Xna.Framework.Graphics
 		// content still bakes MOJOSHADER_RS_ALPHATESTENABLE/ALPHAREF/ALPHAFUNC into its FX
 		// render-state blocks. Tracks whether this instance already logged the one-time notice.
 		private bool alphaTestIgnoredLogged;
+		private bool addressModeDemotedLogged;
 
 		#endregion
 
@@ -171,7 +172,20 @@ namespace Microsoft.Xna.Framework.Graphics
 			(TextureAddressMode) (-1),	// NOPE
 			TextureAddressMode.Wrap,	// MOJOSHADER_TADDRESS_WRAP
 			TextureAddressMode.Mirror,	// MOJOSHADER_TADDRESS_MIRROR
-			TextureAddressMode.Clamp	// MOJOSHADER_TADDRESS_CLAMP
+			TextureAddressMode.Clamp,	// MOJOSHADER_TADDRESS_CLAMP
+			// D3D9 (and therefore XNA 3.1) also had BORDER and MIRRORONCE; XNA 4 dropped both,
+			// so there is no faithful target for them and the table used to end at CLAMP -- an
+			// IndexOutOfRangeException for any 3.1 FX that sets one. Magicka's post-processing
+			// does. Demoted to the nearest survivor instead, which is a DIVERGENCE from 3.1 and
+			// is logged as one:
+			//   BORDER     -> Clamp. Differs only outside [0,1], where D3D9 returned the border
+			//                 colour (transparent black by default) and Clamp repeats the edge
+			//                 texel. Post-process passes sample inside the target, so on this
+			//                 path the two agree.
+			//   MIRRORONCE -> Mirror. Agrees on [-1,1] and repeats the mirror beyond it where
+			//                 D3D9 would have clamped.
+			TextureAddressMode.Clamp,	// MOJOSHADER_TADDRESS_BORDER
+			TextureAddressMode.Mirror	// MOJOSHADER_TADDRESS_MIRRORONCE
 		};
 
 		private static readonly MOJOSHADER_textureFilterType[] XNAMag =
@@ -671,6 +685,35 @@ namespace Microsoft.Xna.Framework.Graphics
 			}
 		}
 
+		/// <summary>
+		/// XNAAddress with the two XNA-4-less D3D9 modes named in the log the first time each is
+		/// seen. Silence would hide a real visual difference; throwing would stop a boot over a
+		/// sampler state, which is not what this port's phase-3 boundary is for.
+		/// </summary>
+		private TextureAddressMode MapTextureAddress(MOJOSHADER_textureAddress address)
+		{
+			if (address == MOJOSHADER_textureAddress.MOJOSHADER_TADDRESS_BORDER ||
+				address == MOJOSHADER_textureAddress.MOJOSHADER_TADDRESS_MIRRORONCE)
+			{
+				if (!addressModeDemotedLogged)
+				{
+					addressModeDemotedLogged = true;
+					FNALoggerEXT.LogWarn(
+						"ADDRESSMODE-DEMOTED (XNA 4 has no " + address + "): " +
+						(Name ?? GetType().Name)
+					);
+				}
+			}
+
+			int index = (int) address;
+			if (index < 0 || index >= XNAAddress.Length)
+			{
+				throw new NotImplementedException("Unhandled texture address mode! " + address);
+			}
+
+			return XNAAddress[index];
+		}
+
 		private unsafe void INTERNAL_updateSamplers(
 			uint changeCount,
 			MOJOSHADER_samplerStateRegister* registers,
@@ -719,19 +762,19 @@ namespace Microsoft.Xna.Framework.Graphics
 					else if (type == MOJOSHADER_samplerStateType.MOJOSHADER_SAMP_ADDRESSU)
 					{
 						MOJOSHADER_textureAddress* val = (MOJOSHADER_textureAddress*) states[j].value.values;
-						pipelineCache.AddressU = XNAAddress[(int) *val];
+						pipelineCache.AddressU = MapTextureAddress(*val);
 						samplerChanged = true;
 					}
 					else if (type == MOJOSHADER_samplerStateType.MOJOSHADER_SAMP_ADDRESSV)
 					{
 						MOJOSHADER_textureAddress* val = (MOJOSHADER_textureAddress*) states[j].value.values;
-						pipelineCache.AddressV = XNAAddress[(int) *val];
+						pipelineCache.AddressV = MapTextureAddress(*val);
 						samplerChanged = true;
 					}
 					else if (type == MOJOSHADER_samplerStateType.MOJOSHADER_SAMP_ADDRESSW)
 					{
 						MOJOSHADER_textureAddress* val = (MOJOSHADER_textureAddress*) states[j].value.values;
-						pipelineCache.AddressW = XNAAddress[(int) *val];
+						pipelineCache.AddressW = MapTextureAddress(*val);
 						samplerChanged = true;
 					}
 					else if (type == MOJOSHADER_samplerStateType.MOJOSHADER_SAMP_MAGFILTER)
