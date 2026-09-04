@@ -76,6 +76,12 @@ namespace Microsoft.Xna.Framework.Graphics
 
 		private IntPtr effectData;
 
+		// PHASE-4: replace with clip() emulation (spec §8.3). XNA 4 (FNA's target) dropped
+		// fixed-function alpha test in favor of clip()/discard in the pixel shader, but XNA 3.1
+		// content still bakes MOJOSHADER_RS_ALPHATESTENABLE/ALPHAREF/ALPHAFUNC into its FX
+		// render-state blocks. Tracks whether this instance already logged the one-time notice.
+		private bool alphaTestIgnoredLogged;
+
 		#endregion
 
 		#region Private Static Variables
@@ -604,6 +610,28 @@ namespace Microsoft.Xna.Framework.Graphics
 					else if (type == (MOJOSHADER_renderStateType) 178)
 					{
 						/* Apparently this is "SetSampler"? */
+					}
+					else if (
+						type == MOJOSHADER_renderStateType.MOJOSHADER_RS_ALPHATESTENABLE ||
+						type == MOJOSHADER_renderStateType.MOJOSHADER_RS_ALPHAREF ||
+						type == MOJOSHADER_renderStateType.MOJOSHADER_RS_ALPHAFUNC
+					)
+					{
+						// PHASE-4: replace with clip() emulation (spec §8.3).
+						// XNA 4 removed fixed-function alpha test (it became a shader clip()/
+						// discard), so FNA's pipeline has nowhere to apply these three states.
+						// XNA 3.1 content -- Magicka's FX among it -- still sets them. Read and
+						// discard rather than throw: for 2D UI (blending handles transparency)
+						// this is a correct no-op, gameplay alpha-cutout (Ф4) needs the real
+						// clip() emulation.
+						if (!alphaTestIgnoredLogged)
+						{
+							alphaTestIgnoredLogged = true;
+							FNALoggerEXT.LogWarn(
+								"ALPHATEST-IGNORED (phase-4: clip emulation): " +
+								(Name ?? GetType().Name)
+							);
+						}
 					}
 					else
 					{
