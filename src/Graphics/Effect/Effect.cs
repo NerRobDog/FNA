@@ -743,7 +743,11 @@ namespace Microsoft.Xna.Framework.Graphics
 		/// <para>
 		/// Assumes the SDL_GPU shader backend, which is the only one FNA3D builds MojoShader
 		/// effects with on this port's platforms; the pointer handed to MojoShader is the very one
-		/// FNA3D stored for that pass.
+		/// FNA3D stored for that pass. That assumption is CHECKED rather than trusted: an FNA3D
+		/// built with another MojoShader backend does not export
+		/// MOJOSHADER_sdlGetVertexAttribLocation at all, and the bare EntryPointNotFoundException
+		/// that comes back from the first pass of the first frame says nothing about why. The catch
+		/// below turns it into the sentence that explains it.
 		/// </para>
 		/// </summary>
 		public unsafe int INTERNAL_GetVertexAttribLocation(
@@ -782,11 +786,32 @@ namespace Microsoft.Xna.Framework.Graphics
 					return -1;
 				}
 
-				return MOJOSHADER_sdlGetVertexAttribLocation(
-					objects[i].shader.shader,
-					usage,
-					usageIndex
-				);
+				try
+				{
+					return MOJOSHADER_sdlGetVertexAttribLocation(
+						objects[i].shader.shader,
+						usage,
+						usageIndex
+					);
+				}
+				catch (EntryPointNotFoundException e)
+				{
+					// Deliberately fatal, and deliberately not a -1. -1 means "this pass does not
+					// read that input", which a host uses to decide NOT to pad it — so answering
+					// -1 to a question we cannot answer would send the host into a dead pipeline
+					// (or, padding the wrong way, into a Metal assert that aborts the process with
+					// no exception at all). Better a sentence naming the cause.
+					throw new PlatformNotSupportedException(
+						"The FNA3D loaded here does not export " +
+						"MOJOSHADER_sdlGetVertexAttribLocation. " +
+						"Effect.INTERNAL_GetVertexAttribLocation is an addition for the XNA 3.1 " +
+						"bridge and it reads MojoShader's SDL_GPU shader objects, so it needs an " +
+						"FNA3D built with the SDL_GPU shader backend (the default, and the only " +
+						"one this fork is used with). There is no fallback on purpose: guessing " +
+						"which inputs a pass reads is what this exists to stop.",
+						e
+					);
+				}
 			}
 
 			return -1;
