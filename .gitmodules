@@ -3,7 +3,8 @@
 	url = https://github.com/flibitijibibo/SDL2-CS
 [submodule "lib/FAudio"]
 	path = lib/FAudio
-	url = https://github.com/FNA-XNA/FAudio
+	url = https://github.com/NerRobDog/FAudio
+	branch = silent-when-undecodable
 [submodule "lib/FNA3D"]
 	path = lib/FNA3D
 	url = https://github.com/NerRobDog/FNA3D
