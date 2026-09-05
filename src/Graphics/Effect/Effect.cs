@@ -253,6 +253,24 @@ namespace Microsoft.Xna.Framework.Graphics
 
 			this.effectData = effectData;
 
+			/* A shader the driver could not compile comes back as nothing at
+			 * all (FNA3D logs the reason as a warning first). It has to be
+			 * reported HERE, from managed code, rather than by throwing out of
+			 * the FNA3D log callback: an exception raised inside a callback
+			 * cannot unwind through the native frames back to whoever called
+			 * this constructor, so it reaches nobody's catch and takes the
+			 * process with it. Thrown here it is an ordinary constructor
+			 * failure, which a caller that wants to carry on without this one
+			 * effect can handle.
+			 */
+			if (glEffect == IntPtr.Zero || effectData == IntPtr.Zero)
+			{
+				throw new InvalidOperationException(
+					"FNA3D could not compile this effect; see the FNA3D log " +
+					"for the shader compiler's own message."
+				);
+			}
+
 			// This is where it gets ugly...
 			INTERNAL_parseEffectStruct(effectData);
 
