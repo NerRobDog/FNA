@@ -83,6 +83,10 @@ namespace Microsoft.Xna.Framework.Graphics
 		private bool alphaTestIgnoredLogged;
 		private bool addressModeDemotedLogged;
 
+		// XNA 3.1 deviation: the texture parameters whose disposed value this instance has already
+		// reported. See INTERNAL_updateSamplers for what is skipped and why.
+		private System.Collections.Generic.HashSet<string> disposedBindSkippedLogged;
+
 		#endregion
 
 		#region Private Static Variables
@@ -874,7 +878,54 @@ namespace Microsoft.Xna.Framework.Graphics
 						if (samplerMap.TryGetValue(registers[i].sampler_name, out texParam))
 						{
 							Texture texture = texParam.texture;
-							if (texture != null)
+							if (texture != null && texture.IsDisposed)
+							{
+								/* XNA 3.1 DEVIATION: tolerate a disposed texture on bind.
+								 *
+								 * In 3.1 this bind did not happen in managed code at all.
+								 * EffectParameter::SetValue(Texture) handed the raw
+								 * IDirect3DBaseTexture9* to ID3DXBaseEffect::SetTexture, which
+								 * AddRef'd it, and EffectPass::Begin was a straight call to
+								 * ID3DXEffect::BeginPass -- it checked the EFFECT for disposal and
+								 * nothing else. Texture::Dispose only dropped the wrapper's own COM
+								 * reference, so a texture the game released while an effect still
+								 * held it stayed alive and drew correctly. (All four claims read
+								 * off the 3.1 GAC assembly with ikdasm; the offsets are 0xD0 for
+								 * SetTexture and 0x100 for BeginPass.)
+								 *
+								 * FNA re-implements the bind in managed code, where the FNA3D
+								 * handle is destroyed at Dispose and there is no reference for the
+								 * effect to hold. Magicka relies on 3.1's behaviour: it tears a
+								 * menu down on its update thread (MenuState.OnExit ->
+								 * SpritesheetManager.UnloadAllSpritesheets -> ContentManager.Unload)
+								 * while the render thread still has a frame in flight whose
+								 * GUIBasicEffect holds those textures -- so the bind arrives one
+								 * tick after the dispose.
+								 *
+								 * Skipping the assignment is what is left. The slot keeps what
+								 * Texture.Dispose's RemoveDisposedTexture left in it (null), so the
+								 * widget draws untextured for the frame or two before the menu is
+								 * gone, instead of taking the process down: in DEBUG with the
+								 * ObjectDisposedException the indexer throws, and in RELEASE, where
+								 * that check is compiled out, by handing FNA3D a freed handle. */
+								if (disposedBindSkippedLogged == null)
+								{
+									disposedBindSkippedLogged =
+										new System.Collections.Generic.HashSet<string>();
+								}
+
+								if (disposedBindSkippedLogged.Add(texParam.Name))
+								{
+									FNALoggerEXT.LogWarn(
+										"DISPOSED-TEXTURE-BIND-SKIPPED (XNA 3.1 kept it alive " +
+										"through ID3DXBaseEffect::SetTexture): " +
+										(Name ?? GetType().Name) +
+										" parameter " + texParam.Name +
+										" register " + register
+									);
+								}
+							}
+							else if (texture != null)
 							{
 								textures[register] = texture;
 							}
