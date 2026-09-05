@@ -89,6 +89,13 @@ namespace Microsoft.Xna.Framework.Graphics
 		/// the state actually reaches the pipeline is still visible in a transcript.
 		/// </summary>
 		private static bool alphaTestIgnoredLogged;
+
+		/// <summary>
+		/// The same, for the fixed-function POINT SPRITE states. One line per process, for the
+		/// same reason as the flag above.
+		/// </summary>
+		private static bool pointSpriteIgnoredLogged;
+
 		private bool addressModeDemotedLogged;
 
 		// XNA 3.1 deviation: the texture parameters whose disposed value this instance has already
@@ -359,6 +366,40 @@ namespace Microsoft.Xna.Framework.Graphics
 
 		protected internal virtual void OnApply()
 		{
+		}
+
+		/// <summary>
+		/// Whether <paramref name="renderStateType"/> is one of D3D9's fixed-function POINT SPRITE
+		/// render states, which XNA 4 removed as a feature and FNA therefore has nowhere to apply.
+		/// </summary>
+		///
+		/// <param name="renderStateType">
+		/// MojoShader's renumbering of D3D9's render states (<c>MOJOSHADER_renderStateType</c>),
+		/// as an int because that enum is private to this class. It is the same number an FX
+		/// container carries in its pass state table, so a caller can ask this about content it
+		/// has only parsed, without a device.
+		/// </param>
+		///
+		/// <remarks>
+		/// Public and testable on purpose: the branch that uses it is inside an unsafe loop over a
+		/// native state array that needs a GraphicsDevice, a compiled effect and a GPU to reach,
+		/// and the decision itself needs none of those. See
+		/// <c>Bridge.Tests/PointSpriteRenderStateTests</c>, and the branch in
+		/// <see cref="INTERNAL_applyEffect"/> for what throwing on these cost.
+		/// </remarks>
+		public static bool INTERNAL_isRemovedPointSpriteState(int renderStateType)
+		{
+			// Two runs, not one: D3D9 put POINTSIZE_MAX on the far side of the multisample and
+			// patch-edge states. Naming all eight rather than testing a range so that a state
+			// BETWEEN them can never be swallowed by accident.
+			return renderStateType == (int) MOJOSHADER_renderStateType.MOJOSHADER_RS_POINTSIZE
+				|| renderStateType == (int) MOJOSHADER_renderStateType.MOJOSHADER_RS_POINTSIZE_MIN
+				|| renderStateType == (int) MOJOSHADER_renderStateType.MOJOSHADER_RS_POINTSPRITEENABLE
+				|| renderStateType == (int) MOJOSHADER_renderStateType.MOJOSHADER_RS_POINTSCALEENABLE
+				|| renderStateType == (int) MOJOSHADER_renderStateType.MOJOSHADER_RS_POINTSCALE_A
+				|| renderStateType == (int) MOJOSHADER_renderStateType.MOJOSHADER_RS_POINTSCALE_B
+				|| renderStateType == (int) MOJOSHADER_renderStateType.MOJOSHADER_RS_POINTSCALE_C
+				|| renderStateType == (int) MOJOSHADER_renderStateType.MOJOSHADER_RS_POINTSIZE_MAX;
 		}
 
 		#endregion
@@ -688,6 +729,40 @@ namespace Microsoft.Xna.Framework.Graphics
 								"fixed-function alpha test XNA 4 removed. Which passes, with " +
 								"what comparison, and what their own shaders already do about " +
 								"it: see the bridge's ALPHATEST-* lines."
+							);
+						}
+					}
+					else if (INTERNAL_isRemovedPointSpriteState((int) type))
+					{
+						// XNA 4 removed the fixed-function POINT SPRITE pipeline outright -- no
+						// PointSize, no PointSpriteEnable, no distance-attenuation triple -- so
+						// FNA's pipeline has nowhere to put any of these eight, exactly as with
+						// the alpha-test triple above. XNA 3.1 content still writes them into its
+						// FX state blocks. Read and discard rather than throw.
+						//
+						// What throwing cost, measured on Magicka: ShieldEffect's Wall and Sphere
+						// techniques each set POINTSCALEENABLE = FALSE, so every shield the player
+						// cast threw out of here, the bridge caught it at its phase-3 boundary --
+						// and a pass that cannot be applied voids the REST OF THE FRAME, since
+						// drawing on through a half-built pipeline fails in the driver where
+						// nothing can catch it. Everything downstream of the shield draw (the GUI
+						// buffer, the transition, the bloom that writes the back buffer) was
+						// therefore skipped for as long as the shield lived: the picture froze on
+						// the last complete frame while the game kept running underneath.
+						// 1391 consecutive abandoned frames in one measured run.
+						//
+						// Discarding these cannot change a pixel of THIS game: a survey of all 51
+						// staged effects (103 passes) finds exactly two point-sprite states in the
+						// whole of it, both POINTSCALEENABLE, both FALSE -- which is D3D9's own
+						// default. See Bridge.Tests/PointSpriteRenderStateTests.
+						if (!pointSpriteIgnoredLogged)
+						{
+							pointSpriteIgnoredLogged = true;
+							FNALoggerEXT.LogWarn(
+								"POINTSPRITE-IGNORED: an FX state block asked for a " +
+								"fixed-function point-sprite state XNA 4 removed (" + type +
+								"). There is nothing in the pipeline to apply it to, and " +
+								"throwing here abandons the rest of the frame."
 							);
 						}
 					}
