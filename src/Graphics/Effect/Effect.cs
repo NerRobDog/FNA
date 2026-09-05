@@ -80,7 +80,15 @@ namespace Microsoft.Xna.Framework.Graphics
 		// fixed-function alpha test in favor of clip()/discard in the pixel shader, but XNA 3.1
 		// content still bakes MOJOSHADER_RS_ALPHATESTENABLE/ALPHAREF/ALPHAFUNC into its FX
 		// render-state blocks. Tracks whether this instance already logged the one-time notice.
-		private bool alphaTestIgnoredLogged;
+		/// <summary>
+		/// One line per PROCESS, not one per effect. The name this side could put in the message is
+		/// FNA's <c>Effect.Name</c>, which is null for everything an XNA 3.1 bridge loads, so nine
+		/// copies of it said "Effect" nine times and named nothing. The bridge does the naming now,
+		/// per effect type / technique / pass, from its own copy of the bytecode — see
+		/// <c>Xna31Bridge/Graphics/AlphaTestSurvey.cs</c>. This flag stays only so that the moment
+		/// the state actually reaches the pipeline is still visible in a transcript.
+		/// </summary>
+		private static bool alphaTestIgnoredLogged;
 		private bool addressModeDemotedLogged;
 
 		// XNA 3.1 deviation: the texture parameters whose disposed value this instance has already
@@ -656,19 +664,30 @@ namespace Microsoft.Xna.Framework.Graphics
 						type == MOJOSHADER_renderStateType.MOJOSHADER_RS_ALPHAFUNC
 					)
 					{
-						// PHASE-4: replace with clip() emulation (spec §8.3).
 						// XNA 4 removed fixed-function alpha test (it became a shader clip()/
 						// discard), so FNA's pipeline has nowhere to apply these three states.
 						// XNA 3.1 content -- Magicka's FX among it -- still sets them. Read and
-						// discard rather than throw: for 2D UI (blending handles transparency)
-						// this is a correct no-op, gameplay alpha-cutout (Ф4) needs the real
-						// clip() emulation.
+						// discard rather than throw.
+						//
+						// PHASE 4 measured what that costs, over all 51 of Magicka's staged
+						// effects: exactly three passes switch the test on, every one of them
+						// GREATER against reference 0. Two of the three carry their own texkill
+						// against a def'd -0.5 -- the HLSL author wrote clip(alpha - 0.5) and the
+						// state block is belt over braces. The third writes oC0 wholly from a
+						// def'd constant whose alpha is 0, so applying the test literally would
+						// discard every fragment of that pass rather than cut anything out of it.
+						// Emulating this state would therefore change nothing at best and delete
+						// a pass at worst, which is why the discard here is now a decision with
+						// evidence rather than a placeholder. See Xna31Bridge/Graphics/
+						// AlphaTestSurvey.cs, which keeps that measurement checkable.
 						if (!alphaTestIgnoredLogged)
 						{
 							alphaTestIgnoredLogged = true;
 							FNALoggerEXT.LogWarn(
-								"ALPHATEST-IGNORED (phase-4: clip emulation): " +
-								(Name ?? GetType().Name)
+								"ALPHATEST-IGNORED: an FX state block asked for the " +
+								"fixed-function alpha test XNA 4 removed. Which passes, with " +
+								"what comparison, and what their own shaders already do about " +
+								"it: see the bridge's ALPHATEST-* lines."
 							);
 						}
 					}
